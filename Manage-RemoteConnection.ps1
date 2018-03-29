@@ -51,11 +51,20 @@ function Global:connect-server(){
     [void][WinAP]::SetForegroundWindow($process.MainWindowHandle)
     [void][Winap]::ShowWindow($process.MainWindowHandle, 5)
     [void][Winap]::ShowWindow($process.MainWindowHandle, 5)
-    start-sleep 2
+    start-sleep  3
     #write-output $cred.getnetworkcredential().password
-    [System.Windows.Forms.SendKeys]::SendWait("$($cred.username){TAB}")
-    start-sleep .5
-    [System.Windows.Forms.SendKeys]::SendWait("$($cred.getnetworkcredential().password){enter}")
+    foreach ($char in ("$($cred.username)").ToCharArray()) {
+        [System.Windows.Forms.SendKeys]::SendWait($char)
+        start-sleep -Milliseconds 30
+    }
+    [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+    start-sleep -Milliseconds 30
+    foreach ($char in ("$($cred.getnetworkcredential().password)").ToCharArray()) {
+        [System.Windows.Forms.SendKeys]::SendWait($char)
+        start-sleep -Milliseconds 30
+    }
+    start-sleep 1
+    #[System.Windows.Forms.SendKeys]::SendWait("{enter}")
 }
 function Show-Form() {
     Add-Type -AssemblyName System.Windows.Forms
