@@ -6,7 +6,7 @@
     Path to the CSV file with the following column headers:
     ServerName,IPAddress,Port,LogonDomain,LogonUserID,ScreenSize,Console,RestrictedAdmin,Width,Height,Span,MultiMon,Prompt,Gateway
 .NOTES   
-	Name: Manage-RemoteConnection.ps1
+	Name: Manage-RDPConnection.ps1
 	Author: Dan Hamik 
 	Contact: Email - danhamik@gmail.com
 	DateCreated: 2018-03-23
@@ -34,46 +34,47 @@ Add-Type @"
 
 "@ -ErrorAction SilentlyContinue
 $headers = @("ServerName", "GroupName", "IPAddress", "Port", "LogonDomain", "LogonUserID", "ScreenSize", "Console", "Width", "Height", "Span", "MultiMon", "Gateway")
+$creds = @{}
 function Global:connect-server(){
     param(
         [parameter(Mandatory)][int]$ServerInfo
     )
     $myserver = $Global:RDPList[$ServerInfo]
-    write-output "HERE"
-    write-output $myserver.LogonDmain
-    write-output $myserver.logonuserid
-    $credinfo = "$($myserver.LogonDmain)\$($myserver.logonuserid)"
-    write-output $credinfo
-    if (-not(get-variable cred -scope script -ErrorAction SilentlyContinue)) {
-        $script:cred = Get-Credential
+    $credinfo = "$($myserver.LogonDomain)\$($myserver.logonuserid)"
+    if ($creds["$credinfo"]) {
+        $cred = $creds["$credinfo"]
+    } else {
+        $creds["$credinfo"] = Get-Credential
+        $cred = $creds["$credinfo"]
     }
-    <#
     $process = start-process mstsc.exe -ArgumentList "/v:$($myserver.ServerName) /public" -PassThru
     [void][WinAP]::SetForegroundWindow($process.MainWindowHandle)
     [void][Winap]::ShowWindow($process.MainWindowHandle, 5)
     [void][Winap]::ShowWindow($process.MainWindowHandle, 5)
     start-sleep 2
     #write-output $cred.getnetworkcredential().password
-    [System.Windows.Forms.SendKeys]::SendWait("$($script:cred.username){TAB}")
+    [System.Windows.Forms.SendKeys]::SendWait("$($cred.username){TAB}")
     start-sleep .5
-    [System.Windows.Forms.SendKeys]::SendWait("$($script:cred.getnetworkcredential().password){enter}")
-    #>
+    [System.Windows.Forms.SendKeys]::SendWait("$($cred.getnetworkcredential().password){enter}")
 }
 function Show-Form() {
     Add-Type -AssemblyName System.Windows.Forms
     $form = New-Object Windows.Forms.Form
-    $form.Size = New-Object Drawing.Size @(200, 100)
+    #$form.Size = New-Object Drawing.Size @(200, 100)
     $form.StartPosition = "CenterScreen"
     $form.AutoSize = $true
-    $form.AutoScroll=$true
-    $form.VerticalScroll.Visible=$true
+    $form.AutoScroll=$false
+    $form.VerticalScroll.Visible=$false
     $maintable = New-Object System.Windows.Forms.TableLayoutPanel
     $maintable.Dock = [System.Windows.Forms.DockStyle]::Top
     $maintable.autosize = $true
     $maintable.CellBorderStyle = "Inset"
+    $maintable.VerticalScroll.Visible=$true
+    $maintable.AutoScroll=$true
     $form.controls.add($maintable)
     #$maintable.VerticalScroll.Visible=$true
     $gb = @{}
+    $gbindex=0
     $gt = @{}
     $index=0
     foreach ($groupname in ($Global:RDPList|Select-Object -property GroupName -Unique).groupname) {
@@ -91,8 +92,9 @@ function Show-Form() {
         $mygb.Controls.add($mygt)
         $gb.add($groupname, $mygb)
         $gt.add($groupname, $mygt)
-        $maintable.controls.add($mygb, 0, $index)
-        $index++
+        $maintable.controls.add($mygb, $gbindex, $index)
+        
+        if ($gbindex -eq 1) {$gbindex = 0; $index++}else {$gbindex++}
     }
     
     $GroupColumn = @{}
@@ -116,7 +118,7 @@ function Show-Form() {
             write-verbose "$($GroupRow["$groupname"]) $($GroupColumn["$groupname"])"
             write-verbose $btn.size
             $gt["$groupname"].Controls.Add($btn,$GroupColumn["$groupname"],$GroupRow["$groupname"])
-            if ($GroupColumn["$groupname"] -eq 4) {$GroupColumn["$groupname"] = 0; $GroupRow["$groupname"]++} else { $GroupColumn["$groupname"]++}
+            if ($GroupColumn["$groupname"] -eq 2) {$GroupColumn["$groupname"] = 0; $GroupRow["$groupname"]++} else { $GroupColumn["$groupname"]++}
         }
     $form.width = $maintable.Width
     $drc = $form.ShowDialog()
@@ -178,9 +180,11 @@ Q: Quit
 }
 $Global:CSVPath = $CSVPath
 if (-not(test-path $CSVPath)) {
+    $edit=$true
     new-item $CSVPath
     set-content -path $CSVPath -Value "`"ServerName`",`"GroupName`",`"IPAddress`",`"Port`",`"LogonDomain`",`"LogonUserID`",`"ScreenSize`",`"Console`",`"Width`",`"Height`",`"Span`",`"MultiMon`",`"Gateway`""
 } elseif ( (get-content $CSVPath) -eq "") {
+    $edit=$true
     set-content -path $CSVPath -Value "`"ServerName`",`"GroupName`",`"IPAddress`",`"Port`",`"LogonDomain`",`"LogonUserID`",`"ScreenSize`",`"Console`",`"Width`",`"Height`",`"Span`",`"MultiMon`",`"Gateway`""
 }
 
