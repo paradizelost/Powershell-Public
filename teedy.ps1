@@ -53,7 +53,7 @@ Invoke-RestMethod -uri "$siteurl/api/document" -Headers $headers -Method PUT -bo
 Invoke-RestMethod -uri "$siteurl/api/document" -Headers $headers -Method PUT -form $doctocreate
 
 
-$logoutresponse = Invoke-webrequest -Uri "https://$siteurl/api/user/logout" -Headers $headers -Method POST
+$logoutresponse = Invoke-webrequest -Uri "$siteurl/api/user/logout" -Headers $headers -Method POST
 if($logoutresponse.BaseResponse.StatusCode -eq 200){
     write-host "logged out successfully"
 }
