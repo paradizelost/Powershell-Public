@@ -40,25 +40,12 @@ $tagtocreate = @{
     parent="";
     color='#3a87ad'
 }
-$tagjson = $tagtocreate|ConvertTo-Json
-$tagurlencode = [System.Web.HttpUtility]::UrlEncode($tagtocreate)
-#Invoke-RestMethod -uri "$siteurl/api/tag" -Headers $headers -Method PUT -body $tagjson -ContentType "application/json"
-#Invoke-RestMethod -uri "$siteurl/api/tag" -Headers $headers -Method PUT -form $tagtocreate
-Invoke-RestMethod -uri "$siteurl/api/tag" -Headers $headers -Method PUT -body $tagtocreate -ContentType 'application/x-www-form-urlencoded'
-#Invoke-RestMethod -uri "$siteurl/api/tag" -Headers $headers -Method PUT -body $tagurlencode -ContentType 'application/x-www-form-urlencoded'
+$newtagid = Invoke-RestMethod -uri "$siteurl/api/tag" -Headers $headers -Method PUT -body $tagtocreate -ContentType 'application/x-www-form-urlencoded'
 $doctocreate=@{
     title="testDoc";
     language="eng";
 }
-$docjson = $doctocreate|ConvertTo-Json
-$docurlencode = [System.Web.HttpUtility]::UrlEncode($doctocreate)
-
-#Invoke-RestMethod -uri "$siteurl/api/document" -Headers $headers -Method PUT -body $docjson -ContentType 'application/json'
-Invoke-RestMethod -uri "$siteurl/api/document" -Headers $headers -Method PUT -body $doctocreate -ContentType 'application/x-www-form-urlencoded'
-#Invoke-RestMethod -uri "$siteurl/api/document" -Headers $headers -Method PUT -form $doctocreate
-#Invoke-RestMethod -uri "$siteurl/api/document" -Headers $headers -Method PUT -body $docurlencode -ContentType 'application/x-www-form-urlencoded'
-
-
+$newdocid = Invoke-RestMethod -uri "$siteurl/api/document" -Headers $headers -Method PUT -body $doctocreate -ContentType 'application/x-www-form-urlencoded'
 $logoutresponse = Invoke-webrequest -Uri "$siteurl/api/user/logout" -Headers $headers -Method POST
 if($logoutresponse.BaseResponse.StatusCode -eq 200){
     write-host "logged out successfully"
