@@ -140,7 +140,6 @@ function Attach-File(){
                 fileID=$file;
                 id=$document
             }
-            $toattach
             Invoke-RestMethod -uri "$siteurl/api/file/$file/attach" -Headers $headers -Method POST -Body $toattach -ContentType 'application/x-www-form-urlencoded'
         }
     }
