@@ -187,7 +187,8 @@ function Add-Directory(){
         $AnchorTag='DirUploadTest',
         $Directory='C:\Users\dan\teedytest',
         [switch]$DontUseExistingTags,
-        [switch]$OnlyCreateTags
+        [switch]$OnlyCreateTags,
+        $Tags
     )
     Update-TagHash
     if(-not($taghash[$AnchorTag])){
@@ -215,9 +216,9 @@ function Add-Directory(){
             $files = get-childitem -Path $mydirectory.FullName -File | select-object -ExpandProperty FullName 
             if($files.count -gt 0){
                 if((split-path $files[0] -parent) -eq $Directory){
-                    New-Document -title $mydirectory.FullName -tag $AnchorTag -file $files    
+                    New-Document -title $mydirectory.FullName -tags @($AnchorTag,$tags) -file $files    
                 } else {
-                    New-Document -title $mydirectory.FullName -tag $newtagname -file $files
+                    New-Document -title $mydirectory.FullName -tags @($newtagname,$tags) -file $files
                 }
             }
         }
