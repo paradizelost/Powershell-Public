@@ -1,30 +1,33 @@
-$siteurl = "https://demo.teedy.io"
-$headers = get-sitelogin
-$global:taghash=@{}
-function get-sitelogin(){
 
-    $tologin=@{username="demo";password="password";}
+function get-sitelogin(){
+    $username = read-host "Teedy Username"
+    $password = read-host "Teedy Password"
+    $tologin=@{username="$username";password="$password";}
     try{
-        $loginresponse = Invoke-webrequest -Uri "$siteurl/api/user/login" -Method POST -Body $tologin 
+        $loginresponse = Invoke-webrequest -Uri "$siteurl/api/user/login" -Method POST -Body $tologin -SessionVariable Session
     } catch {
         if(($error[0].ErrorDetails.Message|convertfrom-json|select-object -ExpandProperty Type) -eq 'ValidationCodeRequired'){
             $mfacode = read-host "MFA Code Required for user. Please enter MFA Code:"
             if($mfacode -match '\d{6}'){
                 $tologin.add('code',$mfacode)
-                $loginresponse = Invoke-webrequest -Uri "$siteurl/api/user/login" -Method POST -Body $tologin 
+                $loginresponse = Invoke-webrequest -Uri "$siteurl/api/user/login" -Method POST -Body $tologin -SessionVariable Session
             }
         }
     }
+    $global:session=$session
     if($loginresponse.baseresponse.StatusCode -eq 200){
         write-host "Logged in successfully"
     }
-    $headercookie = ($loginresponse|select-object -ExpandProperty Headers)["Set-Cookie"]
+    $headercookie = $loginresponse.baseresponse.headers.getvalues('Set-Cookie')
     $token,$null = $headercookie -split ";"
-    $headers=@{
+    $global:headers=@{
         Cookie = "$token"
     }
-    return $headers
+    return $global:headers
 }
+$siteurl = read-host "Teedy URL (i.e. https://demo.teedy.io)"
+$global:headers = get-sitelogin
+$global:taghash=@{}
 function New-Tag(){
     param(
         $TagName,
@@ -65,7 +68,7 @@ function New-Tag(){
         color="#$colorcode";
     }
     #$mytagtocreate
-    $newtagid = Invoke-RestMethod -uri "$siteurl/api/tag" -Headers $headers -Method PUT -body $mytagtocreate -ContentType 'application/x-www-form-urlencoded'
+    $newtagid = Invoke-RestMethod -uri "$siteurl/api/tag" -Headers $global:headers -Method PUT -body $mytagtocreate -ContentType 'application/x-www-form-urlencoded' -WebSession $Session
     Update-TagHash
     } catch {
         $error[0]
@@ -78,7 +81,7 @@ function Remove-Tag(){
     )
     $tagid = $taghash[$tagname].id
     if($tagid){
-        $result = Invoke-RestMethod -uri "$siteurl/api/tag/$tagid" -Headers $headers -Method DELETE
+        $result = Invoke-RestMethod -uri "$siteurl/api/tag/$tagid" -Headers $global:headers -Method DELETE -WebSession $Session
         Update-TagHash
     } else {
         $result = "$tagname not found" 
@@ -115,13 +118,14 @@ function update-tag(){
             parent=$mytag.parent;
             color=$mytag.Color
         }
-        Invoke-RestMethod -uri "$siteurl/api/tag/$tagid" -Headers $headers -Method POST -Body $topost -ContentType 'application/x-www-form-urlencoded'
+        Invoke-RestMethod -uri "$siteurl/api/tag/$tagid" -Headers $global:headers -Method POST -Body $topost -ContentType 'application/x-www-form-urlencoded' -WebSession $Session
     } else {
         write-host "$tagname not found"
     }
 }
 function Update-TagHash(){
-    $taglist = Invoke-RestMethod -uri "$siteurl/api/tag/list" -Headers $headers -Method GET | select-object -ExpandProperty tags
+    $uri = [System.UriBuilder]"$siteurl/api/tag/list"
+    $taglist = Invoke-RestMethod -uri $uri.uri -Headers $global:headers -Method GET -WebSession $global:session | select-object -ExpandProperty tags 
     #if($taglist){write-host "Got tags"}
     $global:taghash=@{}
     foreach($tag in $taglist){
@@ -140,7 +144,7 @@ function Attach-File(){
                 fileID=$file;
                 id=$document
             }
-            Invoke-RestMethod -uri "$siteurl/api/file/$file/attach" -Headers $headers -Method POST -Body $toattach -ContentType 'application/x-www-form-urlencoded'
+            Invoke-RestMethod -uri "$siteurl/api/file/$file/attach" -Headers $global:headers -Method POST -Body $toattach -ContentType 'application/x-www-form-urlencoded' -WebSession $Session
         }
     }
 }
@@ -163,7 +167,7 @@ function New-Document(){
     $basequery = "title=$title&language=$language"
     if ($tags) { $tagsquery = '&tags={0}' -f ($mytags -join '&tags=') }
 
-    $newdocid = (Invoke-RestMethod -uri "$siteurl/api/document" -Headers $headers -Method PUT -body "$($basequery)$($tagsquery)" -ContentType 'application/x-www-form-urlencoded').id
+    $newdocid = (Invoke-RestMethod -uri "$siteurl/api/document" -Headers $global:headers -Method PUT -body "$($basequery)$($tagsquery)" -ContentType 'application/x-www-form-urlencoded' -WebSession $Session).id
     if($file){
         attach-file -documentid $newdocid -fileid $fileids
     }
@@ -177,7 +181,11 @@ Function Add-File(){
     foreach($file in $files){
         if(test-path $file){
             $toupload =   get-item $file
-            $fileids += (Invoke-RestMethod -uri "$siteurl/api/file" -Headers $headers -Method PUT -form @{file=$toupload} -ContentType "multipart/form-data").id
+            c:\windows\system32\curl.exe -H "Cookie: $($global:headers['Cookie'])" --url "$siteurl/api/file" --upload-file $toupload.FullName
+            $response =curl.exe --location --request PUT 'https://docs.hamik.net/api/file' --header "Cookie: $($global:headers['Cookie'])" --form "file=@`"$($toupload.fullname)`""
+            $fileid=($response|convertfrom-json).id
+            $fileids += $fileid
+            #$fileids += (Invoke-RestMethod -uri "$siteurl/api/file" -Headers $global:headers -Method PUT -form @{$toupload} -ContentType "multipart/form-data").id
         }
     }
     $fileids
@@ -195,23 +203,28 @@ function Add-Directory(){
         new-tag -TagName $AnchorTag
     }
     $directories = get-childitem -Path $directory -Directory -Recurse
+    $directories+= Get-item -path $directory
     foreach($mydirectory in $directories){
-        $myparts = @(($mydirectory.fullname  -replace [regex]::escape($directory),'').substring(1) -split '\\')
-        #$mydirectory.FullName
-        #$myparts.count
-        for($i=0;$i -lt $myparts.count;$i++){
-            $myparts[$i]=$myparts[$i] -replace ' ','_' -replace ':',''
-            if(-not($taghash[$myparts[$i]])){
-                if($i -eq 0){
-                    write-host "Creating Tag $($myparts[$i])"
-                    new-tag -TagName $myparts[$i] -ParentTagName $AnchorTag
-                } else{
-                    write-host "Creating Tag $($myparts[$i])"
-                    new-tag -TagName $myparts[$i] -ParentTagName $myparts[$i-1]
+        if($mydirectory.FullName -eq $directory){
+            $newtagname=$AnchorTag
+        }else{
+            $myparts = @(($mydirectory.fullname  -replace [regex]::escape($directory),'').substring(1) -split '\\')
+            #$mydirectory.FullName
+            #$myparts.count
+            for($i=0;$i -lt $myparts.count;$i++){
+                $myparts[$i]=$myparts[$i] -replace ' ','_' -replace ':',''
+                if(-not($taghash[$myparts[$i]])){
+                    if($i -eq 0){
+                        write-host "Creating Tag $($myparts[$i])"
+                        new-tag -TagName $myparts[$i] -ParentTagName $AnchorTag
+                    } else{
+                        write-host "Creating Tag $($myparts[$i])"
+                        new-tag -TagName $myparts[$i] -ParentTagName $myparts[$i-1]
+                    }
                 }
             }
+            $newtagname = $myparts[-1]
         }
-        $newtagname = $myparts[-1]
         if(-not $OnlyCreateTags){
             $files = get-childitem -Path $mydirectory.FullName -File | select-object -ExpandProperty FullName 
             if($files.count -gt 0){
@@ -224,11 +237,20 @@ function Add-Directory(){
         }
     }
 }
-$documentlist = Invoke-RestMethod -uri "$siteurl/api/document/list" -Headers $headers -Method GET | select-object -ExpandProperty documents
+
+$importdir = read-host "Please specify the path to import into Teedy"
+$anchortag = read-host "What is the anchor tag to import items under?"
+$additionalTags = read-host "Any additional tags (comma separated)?"
+$tagstoadd = $additionalTags -split ","
+Add-Directory -AnchorTag $anchortag -Directory $importdir -tags $tagstoadd
+
+<#
+$documentlist = Invoke-RestMethod -uri "$siteurl/api/document/list" -Headers $global:headers -Method GET | select-object -ExpandProperty documents
 if($documentlist){write-host "Got docs"}
-$filelist = Invoke-RestMethod -uri "$siteurl/api/file/list" -Headers $headers -Method GET |Select-Object -ExpandProperty Files
+$filelist = Invoke-RestMethod -uri "$siteurl/api/file/list" -Headers $global:headers -Method GET |Select-Object -ExpandProperty Files
 if($filelist){write-host "Got files"}
-$logoutresponse = Invoke-webrequest -Uri "$siteurl/api/user/logout" -Headers $headers -Method POST
+#>
+$logoutresponse = Invoke-webrequest -Uri "$siteurl/api/user/logout" -Headers $global:headers -Method POST -WebSession $global:session
 if($logoutresponse.BaseResponse.StatusCode -eq 200){
     write-host "logged out successfully"
 }
