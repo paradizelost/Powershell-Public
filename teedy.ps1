@@ -2,6 +2,7 @@ $siteurl = "https://demo.teedy.io"
 $headers = get-sitelogin
 $global:taghash=@{}
 function get-sitelogin(){
+
     $tologin=@{username="demo";password="password";}
     try{
         $loginresponse = Invoke-webrequest -Uri "$siteurl/api/user/login" -Method POST -Body $tologin 
@@ -30,16 +31,24 @@ function New-Tag(){
         $ParentTagName="",
         $color="3a87ad"
     )
+    if($tagname.length -gt 36){
+        $tagname = $tagname.substring(0,36)
+    }
     try{
-        $colorcode = ("{0:X}" -f [drawing.Color]::FromName($color).toargb() ).Substring(2)
+        if($color -eq "3a87ad"){
+            $colorcode="$color"
+        } else {
+            $colorcode = ("{0:X}" -f [drawing.Color]::FromName($color).toargb()).Substring(2)
+        }
     }catch{
         $error[0]
         write-host "Unable to determine color code. Using default blue."
         $colorcode = '3a87ad'
     }
     Update-TagHash
+    try{
     if($global:taghash[$TagName]){
-        throw "TAG $tagname already exists."
+        return "TAG $tagname already exists."
     }
     if((-not($global:taghash[$ParentTagName])) -and ($ParentTagName -ne '') ){
         $parentTagID = (New-Tag -TagName $ParentTagName -ParentTagName '').id
@@ -51,14 +60,17 @@ function New-Tag(){
         }
     }
     $mytagtocreate = @{
-        name=$TagName;
+        name=$TagName  -replace ' ','_' -replace ':','_';
         parent=$parentTagID;
         color="#$colorcode";
     }
-    $mytagtocreate
+    #$mytagtocreate
     $newtagid = Invoke-RestMethod -uri "$siteurl/api/tag" -Headers $headers -Method PUT -body $mytagtocreate -ContentType 'application/x-www-form-urlencoded'
     Update-TagHash
-    $newtagid
+    } catch {
+        $error[0]
+    }
+    $newtagid.id
 }
 function Remove-Tag(){
     param(
@@ -128,6 +140,7 @@ function Attach-File(){
                 fileID=$file;
                 id=$document
             }
+            $toattach
             Invoke-RestMethod -uri "$siteurl/api/file/$file/attach" -Headers $headers -Method POST -Body $toattach -ContentType 'application/x-www-form-urlencoded'
         }
     }
@@ -144,10 +157,38 @@ function New-Document(){
         $fileids= Add-File -Files $file
     }
     $tagid=$taghash[$tag].id
+    if(-not $tagid){
+        $tagid=new-tag -TagName $tag
+    }
     $doctocreate=@{
         title=$title;
         language="eng";
         tags= $tagid;
+    }
+    $doctocreate
+    $newdocid = (Invoke-RestMethod -uri "$siteurl/api/document" -Headers $headers -Method PUT -body $doctocreate -ContentType 'application/x-www-form-urlencoded').id
+    attach-file -documentid $newdocid -fileid $fileids
+}
+function New-multitagDocument(){
+    param(
+        $title,
+        $language='eng',
+        #$tags='',
+        $tag,
+        $file
+    )
+    if($file){
+        $fileids= Add-File -Files $file
+    }
+    update-taghash
+    $tagid=$taghash[$tag].id
+    if(-not $tagid){
+        $tagid=new-tag -TagName $tag
+    }
+    $doctocreate=@{
+        title=$title;
+        language=$language;
+        tags= @{'0f142bff-7922-4c70-8ad2-f492cfd2e5ec';'07002700-01d8-4547-80b9-c59a7c80f2d6'};
     }
     $doctocreate
     $newdocid = (Invoke-RestMethod -uri "$siteurl/api/document" -Headers $headers -Method PUT -body $doctocreate -ContentType 'application/x-www-form-urlencoded').id
@@ -165,6 +206,47 @@ Function Add-File(){
         }
     }
     $fileids
+}
+function Add-Directory(){
+    param(
+        $AnchorTag='DirUploadTest',
+        $Directory='C:\Users\dan\teedytest',
+        [switch]$DontUseExistingTags,
+        [switch]$OnlyCreateTags
+    )
+    Update-TagHash
+    if(-not($taghash[$AnchorTag])){
+        new-tag -TagName $AnchorTag
+    }
+    $directories = get-childitem -Path $directory -Directory -Recurse
+    foreach($mydirectory in $directories){
+        $myparts = @(($mydirectory.fullname  -replace [regex]::escape($directory),'').substring(1) -split '\\')
+        #$mydirectory.FullName
+        #$myparts.count
+        for($i=0;$i -lt $myparts.count;$i++){
+            $myparts[$i]=$myparts[$i] -replace ' ','_' -replace ':',''
+            if(-not($taghash[$myparts[$i]])){
+                if($i -eq 0){
+                    write-host "Creating Tag $($myparts[$i])"
+                    new-tag -TagName $myparts[$i] -ParentTagName $AnchorTag
+                } else{
+                    write-host "Creating Tag $($myparts[$i])"
+                    new-tag -TagName $myparts[$i] -ParentTagName $myparts[$i-1]
+                }
+            }
+        }
+        $newtagname = $myparts[-1]
+        if(-not $OnlyCreateTags){
+            $files = get-childitem -Path $mydirectory.FullName -File | select-object -ExpandProperty FullName 
+            if($files.count -gt 0){
+                if((split-path $files[0] -parent) -eq $Directory){
+                    New-Document -title $mydirectory.FullName -tag $AnchorTag -file $files    
+                } else {
+                    New-Document -title $mydirectory.FullName -tag $newtagname -file $files
+                }
+            }
+        }
+    }
 }
 $documentlist = Invoke-RestMethod -uri "$siteurl/api/document/list" -Headers $headers -Method GET | select-object -ExpandProperty documents
 if($documentlist){write-host "Got docs"}
