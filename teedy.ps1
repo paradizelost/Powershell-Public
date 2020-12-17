@@ -148,50 +148,26 @@ function New-Document(){
     param(
         $title,
         $language='eng',
-        #$tags='',
-        $tag='',
-        $file
-    )
-    if($file){
-        $fileids= Add-File -Files $file
-    }
-    $tagid=$taghash[$tag].id
-    if(-not $tagid){
-        $tagid=new-tag -TagName $tag
-    }
-    $doctocreate=@{
-        title=$title;
-        language="eng";
-        tags= $tagid;
-    }
-    $doctocreate
-    $newdocid = (Invoke-RestMethod -uri "$siteurl/api/document" -Headers $headers -Method PUT -body $doctocreate -ContentType 'application/x-www-form-urlencoded').id
-    attach-file -documentid $newdocid -fileid $fileids
-}
-function New-multitagDocument(){
-    param(
-        $title,
-        $language='eng',
-        #$tags='',
-        $tag,
+        $tags,
         $file
     )
     if($file){
         $fileids= Add-File -Files $file
     }
     update-taghash
-    $tagid=$taghash[$tag].id
-    if(-not $tagid){
-        $tagid=new-tag -TagName $tag
+    $mytags=@()
+    foreach($mytag in $tags){
+        $mytags += $taghash[$mytag].id
     }
-    $doctocreate=@{
-        title=$title;
-        language=$language;
-        tags= @{'0f142bff-7922-4c70-8ad2-f492cfd2e5ec';'07002700-01d8-4547-80b9-c59a7c80f2d6'};
+    $title=[System.Web.HttpUtility]::UrlEncode($title)
+    $basequery = "title=$title&language=$language"
+    if ($tags) { $tagsquery = '&tags={0}' -f ($mytags -join '&tags=') }
+
+    $newdocid = (Invoke-RestMethod -uri "$siteurl/api/document" -Headers $headers -Method PUT -body "$($basequery)$($tagsquery)" -ContentType 'application/x-www-form-urlencoded').id
+    if($file){
+        attach-file -documentid $newdocid -fileid $fileids
     }
-    $doctocreate
-    $newdocid = (Invoke-RestMethod -uri "$siteurl/api/document" -Headers $headers -Method PUT -body $doctocreate -ContentType 'application/x-www-form-urlencoded').id
-    attach-file -documentid $newdocid -fileid $fileids
+    $newdocid
 }
 Function Add-File(){
     param(
